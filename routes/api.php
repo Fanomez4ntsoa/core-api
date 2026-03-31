@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Auth\Controllers\AuthController;
+use App\Modules\Identity\Controllers\IdentityController;
 use App\Modules\User\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -18,4 +19,8 @@ Route::middleware('auth:api')->group(function () {
     // Module User
     Route::put('/user/profile',          [UserController::class, 'updateProfile']);
     Route::post('/user/change-password', [UserController::class, 'changePassword']);
+
+    // Module Identity
+    Route::get('/verification/status',  [IdentityController::class, 'status']);
+    Route::post('/verification/submit', [IdentityController::class, 'submit']);
 });
