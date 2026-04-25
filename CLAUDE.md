@@ -54,7 +54,7 @@ Le **Core central** qui gère :
 | Backend | Laravel 12 |
 | Base de données | MySQL |
 | Auth | JWT (tymon/jwt-auth) |
-| Permissions | spatie/laravel-permission (installé) |
+| Permissions | Système maison — tables `roles` + `user_roles` (pivot avec `universe_slug`) |
 | Déploiement | Railway |
 
 ### Univers (`abracadabati`, etc.)
@@ -128,9 +128,10 @@ protected $hidden = ['password'];
 
 ### Tables existantes
 ```sql
-users          -- Table centrale unifiée
-roles          -- Rôles de la plateforme
-user_roles     -- Pivot users <-> roles avec universe_slug
+users                    -- Table centrale unifiée
+roles                    -- Rôles de la plateforme
+user_roles               -- Pivot users <-> roles avec universe_slug
+identity_verifications   -- Soumissions KYC (selfie + document)
 ```
 
 ### Champs clés de `users`
@@ -155,6 +156,17 @@ remember_token, timestamps, soft_deletes
 | `admin` | Administration plateforme |
 | `particulier` | Particulier cherchant des services |
 | `professionnel` | Artisan/pro du bâtiment |
+
+### Champs clés de `identity_verifications`
+```
+id, uuid, user_id
+selfie_url, id_document_url, id_document_type (passport|id_card|driver_license)
+status (pending|processing|verified|rejected|manual_review)
+ai_confidence_score, ai_analysis
+manual_reviewer_id, manual_review_notes, manual_review_at
+rejection_reason
+submitted_at, processed_at, verified_at, timestamps
+```
 
 ### Champ `universe_slug` sur `user_roles`
 Permet à un même user d'avoir des rôles différents selon l'univers :
@@ -225,14 +237,18 @@ POST /api/verification/submit     → Soumettre selfie + document d'identité
 ### ✅ Terminé
 - `Auth` → Register, Login, Me, Logout
 - `User` → Update profil, Change password
-- `Identity` → Status KYC, Submit vérification (manual_review si pas de clé OpenAI)
+- `Identity` → Status KYC, Submit vérification
+  - **IA** : OpenAI `gpt-4o` (vision) compare le selfie au document d'identité
+  - **Seuils** : confiance ≥ 70 → `verified` · 50–70 → `manual_review` · < 50 → `rejected`
+  - **Fallback** : pas de clé OpenAI → `manual_review`
+  - ⚠️ **Stockage images** : actuellement base64 tronqué (placeholder). Brancher Cloudinary/S3 avant la prod.
 
-### 🔄 En cours / À faire
-- Connecter `abracadabati` au Core via API `/me`
-
-### 📋 Plus tard (quand abracadabati sera branché)
-- Middleware de validation inter-univers
-- Endpoint `/api/universe/validate` pour les univers externes
+### ✅ Terminé
+- `abracadabativ2` créé — Laravel 12, DB MySQL `abracadabativ2`, port 8001
+- `CoreAuthMiddleware` → appelle `GET /api/me` du Core, synchro user local
+- Migrations : `users`, `prospects`, `clients`, `quotes`, `invoices`, `chantiers`, `company_settings`
+- Module CRM/Prospects : CRUD complet (Controller, Service, Requests, Routes)
+- Architecture DDD identique au Core : `app/Modules/CRM/{Controllers,Services,Requests}`
 
 ---
 
@@ -266,9 +282,20 @@ php artisan serve --port=8000
 - ❌ Pas de `$request->validate()` dans les controllers
 - ❌ Pas de logique métier dans les controllers
 - ❌ Pas de MongoDB (on migre vers MySQL)
-- ❌ Pas de Sanctum (installé mais non utilisé — on utilise JWT)
+- ❌ Pas de Sanctum — migration `personal_access_tokens` présente mais non utilisée, à supprimer
 - ❌ Pas d'interfaces Service pour l'instant (à ajouter quand l'équipe grandit)
 - ❌ Pas de création sans vérifier Emergent d'abord
+
+---
+
+## 🔧 Corrections récentes (25 Avril 2026)
+
+- **`DatabaseSeeder`** corrigé → appelle désormais `RoleSeeder` (les 6 rôles sont semés via `php artisan db:seed`). Ancien test user (champ `name` inexistant) supprimé.
+- **Handler JWT global** ajouté dans `bootstrap/app.php` → `TokenExpiredException`, `TokenInvalidException`, `JWTException` et `AuthenticationException` (sur routes `api/*`) renvoient désormais :
+  ```json
+  { "message": "Token invalide ou expiré", "status": 401 }
+  ```
+  au lieu d'une page HTML Laravel.
 
 ---
 
@@ -276,10 +303,11 @@ php artisan serve --port=8000
 
 | Projet | Chemin | Rôle |
 |--------|--------|------|
-| `abracadaworld-core` | `~/project/abracadaworld-core/` | Notre nouveau Core Laravel |
-| `AbracadaBati` | `~/project/AbracadaBati/` | Référence Emergent (FastAPI + React) |
+| `abracadaworld-core` | `~/project/abracadaworld-core/` | Core Laravel — port 8000 |
+| `abracadabativ2`     | `~/project/abracadabativ2/`     | Univers Bati Laravel — port 8001 |
+| `AbracadaBati`       | `~/project/AbracadaBati/`       | Référence Emergent (FastAPI + React) |
 
 ---
 
-*Dernière mise à jour : 31 Mars 2026 — Module Identity validé — Core terminé*
+*Dernière mise à jour : 25 Avril 2026 — DatabaseSeeder + handler JWT corrigés*
 *Rédigé par : Fanomezantsoa + Claude*
