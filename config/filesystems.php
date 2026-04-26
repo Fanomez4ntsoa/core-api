@@ -60,6 +60,19 @@ return [
             'report' => false,
         ],
 
+        'kyc' => [
+            'driver' => 's3',
+            'key' => env('KYC_AWS_ACCESS_KEY_ID'),
+            'secret' => env('KYC_AWS_SECRET_ACCESS_KEY'),
+            'region' => env('KYC_AWS_REGION', 'auto'),
+            'bucket' => env('KYC_AWS_BUCKET'),
+            'endpoint' => env('KYC_AWS_ENDPOINT'),
+            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', true),
+            'visibility' => 'private',
+            'throw' => true,
+            'report' => false,
+        ],
+
     ],
 
     /*
