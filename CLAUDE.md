@@ -241,7 +241,8 @@ POST /api/verification/submit     → Soumettre selfie + document d'identité
   - **IA** : OpenAI `gpt-4o` (vision) compare le selfie au document d'identité
   - **Seuils** : confiance ≥ 70 → `verified` · 50–70 → `manual_review` · < 50 → `rejected`
   - **Fallback** : pas de clé OpenAI → `manual_review`
-  - ⚠️ **Stockage images** : actuellement base64 tronqué (placeholder). Brancher Cloudinary/S3 avant la prod.
+  - **Stockage images** : Cloudflare R2 via disk Laravel `kyc` (privé, S3-compatible). Clés stockées dans `selfie_url` / `id_document_url` au format `kyc/{user_uuid}/{verification_uuid}/{selfie|id_document}.jpg`.
+  - **Validation** : `SubmitVerificationRequest` rejette toute image > 5 Mo (base64 décodé) ou base64 invalide.
 
 ### ✅ Terminé
 - `abracadabativ2` créé — Laravel 12, DB MySQL `abracadabativ2`, port 8001
@@ -262,6 +263,17 @@ DB_CONNECTION=mysql
 DB_DATABASE=abracadaworld_core
 SESSION_DRIVER=file
 CACHE_STORE=file
+
+# OpenAI — vérification KYC
+OPENAI_API_KEY=
+
+# Disk privé KYC — Cloudflare R2 (S3-compatible)
+KYC_AWS_ACCESS_KEY_ID=
+KYC_AWS_SECRET_ACCESS_KEY=
+KYC_AWS_BUCKET=abracadaworld-kyc
+KYC_AWS_ENDPOINT=https://xxx.r2.cloudflarestorage.com
+KYC_AWS_REGION=auto
+AWS_USE_PATH_STYLE_ENDPOINT=true
 ```
 
 ### Lancer le projet
@@ -296,6 +308,12 @@ php artisan serve --port=8000
   { "message": "Token invalide ou expiré", "status": 401 }
   ```
   au lieu d'une page HTML Laravel.
+- **KYC storage Cloudflare R2** → ajout du package `league/flysystem-aws-s3-v3`, disk `kyc` privé dans `config/filesystems.php`, upload réel des images via `Storage::disk('kyc')->put(...)`, validation 5 Mo max dans `SubmitVerificationRequest`.
+
+### ⚠️ Points d'attention MVP KYC (à finir avant prod)
+- **`KYC_AWS_*` à remplir en prod** (Cloudflare R2 ou autre S3-compatible) — sans ça, l'upload échoue (`throw: true` sur le disk).
+- **Pas de cleanup S3 si la création DB échoue** : si `Storage::put` réussit mais `IdentityVerification::create` plante, deux fichiers orphelins restent sur R2. À envelopper dans try/catch + cleanup, ou passer en queued Job idempotent.
+- **`temporaryUrl()` à câbler** pour le futur back-office admin — `Storage::disk('kyc')->temporaryUrl($path, now()->addMinutes(10))` permettra au reviewer humain de visualiser les images en `manual_review`.
 
 ---
 
@@ -309,5 +327,5 @@ php artisan serve --port=8000
 
 ---
 
-*Dernière mise à jour : 25 Avril 2026 — DatabaseSeeder + handler JWT corrigés*
+*Dernière mise à jour : 25 Avril 2026 — KYC storage R2 implémenté*
 *Rédigé par : Fanomezantsoa + Claude*

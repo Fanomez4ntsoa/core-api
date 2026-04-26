@@ -6,6 +6,8 @@ use App\Models\IdentityVerification;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class IdentityService
 {
@@ -38,11 +40,20 @@ class IdentityService
             return ['error' => 'Une vérification est déjà en cours', 'code' => 400];
         }
 
+        // Upload des images vers le disk privé KYC (R2 / S3)
+        $verificationUuid = (string) Str::uuid();
+        $selfieKey   = "kyc/{$user->uuid}/{$verificationUuid}/selfie.jpg";
+        $documentKey = "kyc/{$user->uuid}/{$verificationUuid}/id_document.jpg";
+
+        Storage::disk('kyc')->put($selfieKey,   base64_decode($data['selfie_base64']));
+        Storage::disk('kyc')->put($documentKey, base64_decode($data['id_document_base64']));
+
         // Créer le record — basé sur Emergent
         $verification = IdentityVerification::create([
+            'uuid'              => $verificationUuid,
             'user_id'           => $user->id,
-            'selfie_url'        => 'base64:' . substr($data['selfie_base64'], 0, 100) . '...',
-            'id_document_url'   => 'base64:' . substr($data['id_document_base64'], 0, 100) . '...',
+            'selfie_url'        => $selfieKey,
+            'id_document_url'   => $documentKey,
             'id_document_type'  => $data['id_document_type'],
             'status'            => 'processing',
             'submitted_at'      => now(),
